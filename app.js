@@ -2,12 +2,17 @@ const { Client } = require('discord.js');
 const { token, bot_dir } = require('./env.json');
 const child_process = require('child_process');
 const fs = require('fs');
+const path = require('path');
 
 const update_script = `${bot_dir}updateTask.sh`;
 
-commands = ['!help <command>: Show command usage',
-            '!update: Update a task',
-            '!update-with-log: Update a task and print info log'];
+commands = [
+    '!help <command>: Show command usage',
+    '!update <task-name> [options]: Update a task',
+    '!update-with-log <task-name> [options]: Update a task and print info log',
+    '!setcontest <contest-id>: Set contest_id to specific contest',
+    '!unsetcontest: Unset contest_id'
+];
 
 const client = new Client();
 
@@ -24,6 +29,7 @@ client.on('message', async msg => {
     console.log(msg.content);
     let args = msg.content.substring(1).split(' ');
     let cmd = args[0];
+    let res;
     switch(cmd){
         case 'help':
             if(args.length < 2)
@@ -31,12 +37,19 @@ client.on('message', async msg => {
             else
                 switch(args[1]){
                     case 'update':
+                    case 'update-with-log':
                         await cmsImportTask_usage().then(stdout => {
-                            msg.channel.send(`\`\`\`${stdout}\`\`\``);
+                            msg.channel.send(`\`\`\`${stdout.replace('./updateTask.sh', `!${args[1]}`)}\`\`\``);
                         }, error => {
                             send_msg(msg, [`Some error was occured.\nError log:\`\`\`${error}\`\`\``],
                                 `Some error was occured, but error log is too large to send.`);
                         });
+                        break;
+                    case 'setcontest':
+                        msg.channel.send('```!setcontest <contest-id>: Set contest_id to specific contest```');
+                        break;
+                    case 'unsetcontest':
+                        msg.channel.send('```!unsetcontest: Unset contest_id```');
                         break;
                     default:
                         msg.channel.send('Command not found.');
@@ -54,7 +67,7 @@ client.on('message', async msg => {
                 break;
             }
             if(nowon !== ''){
-                msg.channel.send(`Processing ${nowon} now, please wait.`);
+                msg.channel.send(`Processing "${nowon}" now, please wait.`);
                 break;
             }
             nowon = args[1];
@@ -71,6 +84,26 @@ client.on('message', async msg => {
             }).finally(() => {
                 nowon = '';
             });
+            break;
+        case 'setcontest':
+            if(args.length != 2){
+                msg.channel.send('```!setcontest <contest-id>: Set contest_id to the specific contest```');
+                break;
+            }
+            if(!is_posinteger(args[1])){
+                msg.channel.send('`<contest-id>` must be a positive integer');
+                break;
+            }
+            res = await setcontest(Number(args[1]));
+            msg.channel.send(res);
+            break;
+        case 'unsetcontest':
+            if(args.length != 1){
+                msg.channel.send('```!unsetcontest: Unset contest_id```');
+                break;
+            }
+            res = await setcontest(0);
+            msg.channel.send(res);
             break;
     }
 });
@@ -119,6 +152,34 @@ async function update_task(cmd, task_and_options){
                 reject(stdout.replace(bot_dir, ''));
         });
     });
+}
+
+async function setcontest(id){
+    const script_path = path.join(__dirname, 'updateTask.sh');
+    if(id)
+        cmd = `sed -i 's/contest_id=[0-9]*/contest_id=${id}/g' ${script_path}`;
+    else
+        cmd = `sed -i 's/contest_id=[0-9]*/contest_id=0/g' ${script_path}`;
+    return new Promise((resolve, reject) => {
+        child_process.exec(cmd, (err, stdout, stderr) => {
+            if(err){
+                console.error(`ERROR:\n${err}\n`);
+                reject(err.toString().replace(bot_dir, ''));
+                return;
+            }
+            if(id)
+                resolve(`Successfully set contest_id to ${id}`);
+            else
+                resolve('Successfully unset contest_id');
+        });
+    });
+}
+
+function is_posinteger(x){
+    if(typeof x !== "string")
+        return false;
+    const num = Number(x);
+    return Number.isInteger(num) && num > 0;
 }
 
 async function send_msg(msg, content, error_content){
