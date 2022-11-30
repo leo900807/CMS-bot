@@ -67,7 +67,11 @@ client.on('message', async msg => {
                 break;
             }
             if(nowon !== ''){
-                msg.channel.send(`Processing "${nowon}" now, please wait.`);
+                msg.channel.send(`Processing "${nowon}" now, please try again later.`);
+                break;
+            }
+            if(!/^[A-Za-z0-9_]+$/.test(args[1])){
+                msg.channel.send(`\`<task-name>\` does not match \`[A-Za-z0-9_]+\``);
                 break;
             }
             nowon = args[1];
@@ -112,7 +116,7 @@ client.login(token);
 
 async function cmsImportTask_usage(){
     return new Promise((resolve, reject) => {
-        child_process.exec(`${update_script} --help`, (err, stdout, stderr) => {
+        child_process.execFile(update_script, ['--help'], (err, stdout, stderr) => {
             if(err){
                 console.error(`ERROR:\n${err}\n`);
                 reject(err.toString().replace(bot_dir, ''));
@@ -124,12 +128,10 @@ async function cmsImportTask_usage(){
 }
 
 async function update_task(cmd, task_and_options){
-    if(cmd == 'update')
-        cmd_str = `${update_script} ${task_and_options.join(' ')}`
-    else
-        cmd_str = `${update_script} ${task_and_options.join(' ')} --full-log`
+    if(cmd === 'update-with-log')
+        task_and_options.push('--full-log');
     return new Promise((resolve, reject) => {
-        child_process.exec(cmd_str, (err, stdout, stderr) => {
+        child_process.execFile(update_script, task_and_options, (err, stdout, stderr) => {
             if(err){
                 console.error(`ERROR:\n${err}\n`);
                 reject(err.toString().replace(bot_dir, ''));
