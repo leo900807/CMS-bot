@@ -8,95 +8,95 @@ task_path="${root_dir}/${repo_dir}/${task}"
 nogen=0
 
 help_func () {
-	echo "Usage: ./updateTask.sh <task-name> [options]"
-	echo "Update a tps-format task for the CMS server from a Gitlab/GitHub repo."
-	echo ""
-	echo -e "  --nogen\tDo not generate testcases while updating. Note that the testcases should have been generated already."
-	echo ""
-	echo -e "  --help\t Print help messages"
-	exit 0
+    echo "Usage: ./updateTask.sh <task-name> [options]"
+    echo "Update a tps-format task for the CMS server from a Gitlab/GitHub repo."
+    echo ""
+    echo -e "  --nogen\tDo not generate testcases while updating. Note that the testcases should have been generated already."
+    echo ""
+    echo -e "  --help\t Print help messages"
+    exit 0
 }
 
 if [[ $# -lt 1 ]]; then
-	help_func
+    help_func
 fi
 
 if [[ ${task} == "--help" ]]; then
-	help_func
+    help_func
 fi
 
 shift 1
 
 while [[ $# -gt 0 ]]; do
-	case $1 in
-		--nogen)
-			nogen=1
-			;;
-		--help)
-			help_func
-			;;
-		--full-log)
-			full=1
-			;;
-		*)
-			echo "Unknown option/string $1"
-			exit 0
-			;;
-	esac
-	shift 1
+    case $1 in
+        --nogen)
+            nogen=1
+            ;;
+        --help)
+            help_func
+            ;;
+        --full-log)
+            full=1
+            ;;
+        *)
+            echo "Unknown option/string $1"
+            exit 0
+            ;;
+    esac
+    shift 1
 done
 
 cd ${root_dir}/${repo_dir}
 if [[ ${full} -eq 1 ]]; then
-	git pull
+    git pull
 else
-	git pull 2>&1 > /dev/null
+    git pull 2>&1 > /dev/null
 fi
 
 if ! [[ -d "${task_path}" ]]; then
-	echo "Can not find task ${task} in repo ${repo_dir}"
-	exit 0
+    echo "Can not find task ${task} in repo ${repo_dir}"
+    exit 0
 fi
 
 cd "${task_path}"
 if [[ ${nogen} -ne 1 ]]; then
-	if [[ ${full} -eq 1 ]]; then
-		tps gen -s
-	else
-		tps gen -s 2>&1 > /dev/null
-	fi
-	exit_code=$?
-	if [[ ${exit_code} -ne 0 ]]; then
-		echo "tps gen error"
-		exit 0
-	fi
+    if [[ ${full} -eq 1 ]]; then
+        tps gen -s
+    else
+        tps gen -s 2>&1 > /dev/null
+    fi
+    exit_code=$?
+    if [[ ${exit_code} -ne 0 ]]; then
+        echo "tps gen error"
+        exit 0
+    fi
 fi
 if ! [[ -d "${task_path}/tests" ]]; then
-	echo "no testcases available"
-	exit 0
+    echo "no testcases available"
+    exit 0
 fi
 
 if [[ -f "public/files" ]]; then
-	if [[ ${full} -eq 1 ]]; then
-		tps make-public
-	else
-		tps make-public 2>&1 > /dev/null
-	fi
-	exit_code=$?
-	if [[ ${exit_code} -ne 0 ]]; then
-		echo "tps make-public error"
-		exit 0
-	fi
+    if [[ ${full} -eq 1 ]]; then
+        tps make-public
+    else
+        tps make-public 2>&1 > /dev/null
+    fi
+    exit_code=$?
+    if [[ ${exit_code} -ne 0 ]]; then
+        echo "tps make-public error"
+        exit 0
+    fi
 fi
 cd ~
 
 if [[ ${contest_id} -gt 0 ]]; then
-	cmsImportTask -L tps_task "${task_path}" -u -c ${contest_id}
+    cmsImportTask -L tps_task "${task_path}" -u -c ${contest_id}
 else
-	cmsImportTask -L tps_task "${task_path}" -u
+    cmsImportTask -L tps_task "${task_path}" -u
 fi
 exit_code=$?
 if [[ ${exit_code} -ne 0 ]]; then
-	echo "cmsImportTask error"
-	exit 0
+    echo "cmsImportTask error"
+    exit 0
 fi
