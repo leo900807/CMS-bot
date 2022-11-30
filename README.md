@@ -1,6 +1,6 @@
 # CMS-bot
 
-A discord bot to update tps format tasks.
+A discord bot to import tps format tasks to CMS or update tasks which were imported.
 
 Node.js version: v16.13.2
 
