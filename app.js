@@ -33,57 +33,63 @@ client.on('message', async msg => {
     switch(cmd){
         case 'help':
             if(args.length < 2)
-                msg.channel.send(`\`\`\`\n${commands.join('\n')}\`\`\``);
+                await msg.channel.send(`\`\`\`\n${commands.join('\n')}\`\`\``);
             else
                 switch(args[1]){
                     case 'update':
                     case 'update-with-log':
-                        await cmsImportTask_usage().then(stdout => {
-                            msg.channel.send(`\`\`\`${stdout.replace('./updateTask.sh', `!${args[1]}`)}\`\`\``);
-                        }, error => {
-                            send_msg(msg, [`Some error was occured.\nError log:\`\`\`${error}\`\`\``],
+                        await cmsImportTask_usage().then(async stdout => {
+                            await msg.channel.send(`\`\`\`${stdout.replace('./updateTask.sh', `!${args[1]}`)}\`\`\``);
+                        }, async error => {
+                            await send_msg(msg, [`Some error was occured.\nError log:\`\`\`${error}\`\`\``],
                                 `Some error was occured, but error log is too large to send.`);
                         });
                         break;
                     case 'setcontest':
-                        msg.channel.send('```!setcontest <contest-id>: Set contest_id to specific contest```');
+                        await msg.channel.send('```!setcontest <contest-id>: Set contest_id to specific contest```');
                         break;
                     case 'unsetcontest':
-                        msg.channel.send('```!unsetcontest: Unset contest_id```');
+                        await msg.channel.send('```!unsetcontest: Unset contest_id```');
                         break;
                     default:
-                        msg.channel.send('Command not found.');
+                        await msg.channel.send('Command not found.');
                 }
             break;
         case 'update':
         case 'update-with-log':
             if(args.length < 2){
-                await cmsImportTask_usage().then(stdout => {
-                    msg.channel.send(`\`\`\`${stdout.replace('./updateTask.sh', `!${cmd}`)}\`\`\``);
-                }, error => {
-                    send_msg(msg, [`Some error was occured.\nError log:\`\`\`${error}\`\`\``],
+                await cmsImportTask_usage().then(async stdout => {
+                    await msg.channel.send(`\`\`\`${stdout.replace('./updateTask.sh', `!${cmd}`)}\`\`\``);
+                }, async error => {
+                    await send_msg(msg, [`Some error was occured.\nError log:\`\`\`${error}\`\`\``],
                         `Some error was occured, but error log is too large to send.`);
                 });
                 break;
             }
             if(nowon !== ''){
-                msg.channel.send(`Processing "${nowon}" now, please try again later.`);
+                await msg.channel.send(`Processing "${nowon}" now, please try again later.`);
                 break;
             }
             if(!/^[A-Za-z0-9_]+$/.test(args[1])){
-                msg.channel.send(`\`<task-name>\` does not match \`[A-Za-z0-9_]+\``);
+                await msg.channel.send(`\`<task-name>\` does not match \`[A-Za-z0-9_]+\``);
                 break;
             }
             nowon = args[1];
-            msg.channel.send(`Updating task "${args[1]}"...`);
-            await update_task(cmd, args.slice(1)).then(stdout => {
+            await msg.channel.send(`Updating task "${args[1]}"...`);
+            await update_task(cmd, args.slice(1)).then(async stdout => {
                 if(cmd === 'update-with-log')
-                    send_msg(msg, [`Task "${args[1]}" was successfully updated.\nInfo log:`, { files: [`${bot_dir}/log.txt`] }],
+                    await send_msg(msg, [`Task "${args[1]}" was successfully updated.\nInfo log:`, { files: [`${bot_dir}/log.txt`] }],
                         `Task "${args[1]}" was successfully updated, but info log is too large to send.`);
                 else
-                    msg.channel.send(`Task "${args[1]}" was successfully updated.`);
-            }, error => {
-                send_msg(msg, [`Task "${args[1]}" was not updated.\nError log:\`\`\`${error}\`\`\``],
+                    await msg.channel.send(`Task "${args[1]}" was successfully updated.`);
+            }, async error => {
+                try{
+                    fs.writeFileSync(`${bot_dir}/error.txt`, error);
+                }
+                catch(e){
+                    console.error(e);
+                }
+                await send_msg(msg, [`Task "${args[1]}" was not updated.\nError log:`, { files: [`${bot_dir}/error.txt`] }],
                     `Task "${args[1]}" was not updated, but error log is too large to send.`);
             }).finally(() => {
                 nowon = '';
@@ -91,23 +97,23 @@ client.on('message', async msg => {
             break;
         case 'setcontest':
             if(args.length != 2){
-                msg.channel.send('```!setcontest <contest-id>: Set contest_id to the specific contest```');
+                await msg.channel.send('```!setcontest <contest-id>: Set contest_id to the specific contest```');
                 break;
             }
             if(!is_posinteger(args[1])){
-                msg.channel.send('`<contest-id>` must be a positive integer');
+                await msg.channel.send('`<contest-id>` must be a positive integer');
                 break;
             }
             res = await setcontest(Number(args[1]));
-            msg.channel.send(res);
+            await msg.channel.send(res);
             break;
         case 'unsetcontest':
             if(args.length != 1){
-                msg.channel.send('```!unsetcontest: Unset contest_id```');
+                await msg.channel.send('```!unsetcontest: Unset contest_id```');
                 break;
             }
             res = await setcontest(0);
-            msg.channel.send(res);
+            await msg.channel.send(res);
             break;
     }
 });
@@ -141,6 +147,10 @@ async function update_task(cmd, task_and_options){
                 console.log(`STDOUT:\n${stdout}\n`);
             if(stderr)
                 console.log(`STDERR:\n${stderr}\n`);
+            if(!stdout && !stderr){
+                reject('Error log is too large to show');
+                return;
+            }
             if(cmd === 'update-with-log')
                 try{
                     fs.writeFileSync(`${bot_dir}/log.txt`, stdout);
@@ -187,12 +197,12 @@ function is_posinteger(x){
 async function send_msg(msg, content, error_content){
     try{
         if(content.length > 1)
-            msg.channel.send(content[0], content[1]);
+            await msg.channel.send(content[0], content[1]);
         else
-            msg.channel.send(content[0]);
+            await msg.channel.send(content[0]);
     }
     catch(e){
         console.error(e);
-        msg.channel.send(error_content);
+        await msg.channel.send(error_content);
     }
 }

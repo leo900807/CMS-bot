@@ -1,4 +1,5 @@
 env.json
 log.txt
+error.txt
 updateTask.sh
 node_modules/
