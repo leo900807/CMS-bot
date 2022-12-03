@@ -83,14 +83,19 @@ client.on('message', async msg => {
                 else
                     await msg.channel.send(`Task "${args[1]}" was successfully updated.`);
             }, async error => {
-                try{
-                    fs.writeFileSync(`${bot_dir}/error.txt`, error);
+                if(error.length > 3000){
+                    try{
+                        fs.writeFileSync(`${bot_dir}/error.txt`, error);
+                    }
+                    catch(e){
+                        console.error(e);
+                    }
+                    await send_msg(msg, [`Task "${args[1]}" was not updated.\nError log:`, { files: [`${bot_dir}/error.txt`] }],
+                        `Task "${args[1]}" was not updated, but error log is too large to send.`);
                 }
-                catch(e){
-                    console.error(e);
-                }
-                await send_msg(msg, [`Task "${args[1]}" was not updated.\nError log:`, { files: [`${bot_dir}/error.txt`] }],
-                    `Task "${args[1]}" was not updated, but error log is too large to send.`);
+                else
+                    await send_msg(msg, [`Task "${args[1]}" was not updated.\nError log:\`\`\`${error}\`\`\``],
+                        `Task "${args[1]}" was not updated, but error log is too large to send.`);
             }).finally(() => {
                 nowon = '';
             });
