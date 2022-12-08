@@ -83,7 +83,7 @@ client.on('message', async msg => {
                 else
                     await msg.channel.send(`Task "${args[1]}" was successfully updated.`);
             }, async error => {
-                if(error.length > 3000){
+                if(error.length > 2000){
                     try{
                         fs.writeFileSync(`${bot_dir}/error.txt`, error);
                     }
