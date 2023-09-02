@@ -1,6 +1,6 @@
 {
     "name": "CMS-bot",
-    "version": "1.0.3",
+    "version": "1.0.4",
     "description": "A discord bot to import tps format tasks to CMS or update tasks which were imported.",
     "dependencies": {
         "discord.js": "^12.5.3"

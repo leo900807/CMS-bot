@@ -10,6 +10,8 @@ commands = [
     '!help <command>: Show command usage',
     '!update <task-name> [options]: Update a task',
     '!update-with-log <task-name> [options]: Update a task and print info log',
+    '!appendtd <task-name> <dataset-name>: Append dataset to a task',
+    '!appendtd-with-log <task-name> <dataset-name>: Append dataset to a task and print info log',
     '!setcontest <contest-id>: Set contest_id to specific contest',
     '!unsetcontest: Unset contest_id'
 ];
@@ -44,6 +46,10 @@ client.on('message', async msg => {
                             await send_msg(msg, [`Some error was occured.\nError log:\`\`\`${error}\`\`\``],
                                 `Some error was occured, but error log is too large to send.`);
                         });
+                        break;
+                    case 'appendtd':
+                    case 'appendtd-with-log':
+                        await msg.channel.send(`\`\`\`!${args[1]} <task-name> <dataset-name>: Append dataset to a task\`\`\``);
                         break;
                     case 'setcontest':
                         await msg.channel.send('```!setcontest <contest-id>: Set contest_id to specific contest```');
@@ -100,6 +106,52 @@ client.on('message', async msg => {
                 nowon = '';
             });
             break;
+        case 'appendtd':
+        case 'appendtd-with-log':
+            if(args.length != 3){
+                await msg.channel.send(`\`\`\`!${cmd} <task-name> <dataset-name>: Append dataset to a task\`\`\``);
+                break;
+            }
+            if(nowon !== ''){
+                await msg.channel.send(`Processing "${nowon}" now, please try again later.`);
+                break;
+            }
+            if(!/^[A-Za-z0-9_]+$/.test(args[1])){
+                await msg.channel.send(`\`<task-name>\` does not match \`[A-Za-z0-9_]+\``);
+                break;
+            }
+            if(!/^[A-Za-z0-9_\-]+$/.test(args[2])){
+                await msg.channel.send(`\`<dataset-name>\` does not match \`[A-Za-z0-9_\\-]+\``);
+                break;
+            }
+            args.push(args[2]);
+            args[2] = '--appendtd';
+            nowon = args[1];
+            await msg.channel.send(`Appending dataset to task "${args[1]}"...`);
+            await update_task(cmd, args.slice(1)).then(async stdout => {
+                if(cmd === 'appendtd-with-log')
+                    await send_msg(msg, [`Dataset was successfully appended to task "${args[1]}".\nInfo log:`, { files: [`${bot_dir}/log.txt`] }],
+                        `Dataset was successfully appended to task "${args[1]}", but info log is too large to send.`);
+                else
+                    await msg.channel.send(`Dataset was successfully appended to task "${args[1]}".`);
+            }, async error => {
+                if(error.length > 2000){
+                    try{
+                        fs.writeFileSync(`${bot_dir}/error.txt`, error);
+                    }
+                    catch(e){
+                        console.error(e);
+                    }
+                    await send_msg(msg, [`Dataset was not appended to task "${args[1]}".\nError log:`, { files: [`${bot_dir}/error.txt`] }],
+                        `Dataset was not appended to task "${args[1]}", but error log is too large to send.`);
+                }
+                else
+                    await send_msg(msg, [`Dataset was not appended to task "${args[1]}".\nError log:\`\`\`${error}\`\`\``],
+                        `Dataset was not appended to task "${args[1]}", but error log is too large to send.`);
+            }).finally(() => {
+                nowon = '';
+            });
+            break;
         case 'setcontest':
             if(args.length != 2){
                 await msg.channel.send('```!setcontest <contest-id>: Set contest_id to the specific contest```');
@@ -139,7 +191,7 @@ async function cmsImportTask_usage(){
 }
 
 async function update_task(cmd, task_and_options){
-    if(cmd === 'update-with-log')
+    if(cmd === 'update-with-log' || cmd === 'appendtd-with-log')
         task_and_options.push('--full-log');
     return new Promise((resolve, reject) => {
         child_process.execFile(update_script, task_and_options, (err, stdout, stderr) => {
@@ -148,15 +200,17 @@ async function update_task(cmd, task_and_options){
                 reject(err.toString().replace(bot_dir, ''));
                 return;
             }
-            if(stdout)
+            if(stdout){
+                stdout = stdout.replace('Enter a description: ', '');
                 console.log(`STDOUT:\n${stdout}\n`);
+            }
             if(stderr)
                 console.log(`STDERR:\n${stderr}\n`);
             if(!stdout && !stderr){
                 reject('Error log is too large to show');
                 return;
             }
-            if(cmd === 'update-with-log')
+            if(cmd === 'update-with-log' || cmd === 'appendtd-with-log')
                 try{
                     fs.writeFileSync(`${bot_dir}/log.txt`, stdout);
                 }

@@ -1,7 +1,7 @@
 #!/bin/bash
 
 root_dir="/home/myaccount/problem-repos"
-repo_dir="problem-2022"
+repo_dir="problem-dir"
 task=$1
 contest_id=0
 task_path="${root_dir}/${repo_dir}/${task}"
@@ -11,9 +11,11 @@ help_func () {
     echo "Usage: ./updateTask.sh <task-name> [options]"
     echo "Update a tps-format task for the CMS server from a Gitlab/GitHub repo."
     echo ""
-    echo -e "  --nogen\tDo not generate testcases while updating. Note that the testcases should have been generated already."
+    echo -e "  --nogen\t\t\tDo not generate testcases while updating. Note that the testcases should have been generated already."
     echo ""
-    echo -e "  --help\t Print help messages"
+    echo -e "  --appendtd <dataset-name>\tAppend dataset to a task"
+    echo ""
+    echo -e "  --help\t\t\tPrint help messages"
     exit 0
 }
 
@@ -37,6 +39,15 @@ while [[ $# -gt 0 ]]; do
             ;;
         --full-log)
             full=1
+            ;;
+        --appendtd)
+            appendtd=1
+            shift 1
+            if [[ $# -eq 0 ]]; then
+                echo "dataset-name is required"
+                exit 0
+            fi
+            dataset_name=$1
             ;;
         *)
             echo "Unknown option/string $1"
@@ -76,7 +87,7 @@ if ! [[ -d "${task_path}/tests" ]]; then
     exit 0
 fi
 
-if [[ -f "public/files" ]]; then
+if [[ -f "public/files" && ${appendtd} -ne 1 ]]; then
     if [[ ${full} -eq 1 ]]; then
         tps make-public
     else
@@ -89,6 +100,15 @@ if [[ -f "public/files" ]]; then
     fi
 fi
 cd ~
+
+if [[ ${appendtd} -eq 1 ]];then
+    echo "${dataset_name}" | cmsImportDataset -L tps_task "${task_path}"
+    exit_code=$?
+    if [[ ${exit_code} -ne 0 ]]; then
+        echo "cmsImportDataset error"
+    fi
+    exit 0
+fi
 
 if [[ ${contest_id} -gt 0 ]]; then
     cmsImportTask -L tps_task "${task_path}" -u -c ${contest_id}
