@@ -2,7 +2,7 @@
 
 A discord bot to import tps format tasks to CMS or update tasks which were imported.
 
-Node.js version: v16.13.2
+Node.js version: v22.14.0
 
 ## Installation
 

@@ -1,267 +1,277 @@
-const { Client } = require('discord.js');
-const { token, bot_dir } = require('./env.json');
-const child_process = require('child_process');
+const { Client, GatewayIntentBits, SlashCommandBuilder, Routes, AttachmentBuilder, ActivityType } = require('discord.js');
+const { REST } = require('@discordjs/rest');
+const { token: TOKEN, bot_dir: BOT_DIR, client_id: CLIENT_ID } = require('./env.json');
+const childProcess = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
-const update_script = `${bot_dir}updateTask.sh`;
+const UPDATE_SCRIPT_PATH = `${BOT_DIR}updateTask.sh`;
 
-commands = [
-    '!help <command>: Show command usage',
-    '!update <task-name> [options]: Update a task',
-    '!update-with-log <task-name> [options]: Update a task and print info log',
-    '!appendtd <task-name> <dataset-name>: Append dataset to a task',
-    '!appendtd-with-log <task-name> <dataset-name>: Append dataset to a task and print info log',
-    '!setcontest <contest-id>: Set contest_id to specific contest',
-    '!unsetcontest: Unset contest_id'
-];
+const client = new Client({
+    intents: [
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.MessageContent
+    ]
+});
 
-const client = new Client();
+const rest = new REST({ version: '10' }).setToken(TOKEN);
 
-client.once('ready', () => {
+client.on('ready', () => {
     console.log(`Logged in as ${client.user.tag}`);
-    client.user.setActivity('!help');
+    client.user.setActivity('Use `/` to trigger commands', { type: ActivityType.Custom });
+
+    const commands = [
+        new SlashCommandBuilder().setName('update').setDescription('Update a task')
+            .addStringOption(option => 
+                option.setName('task-name').setDescription('Task name').setRequired(true)
+            )
+            .addStringOption(option =>
+                option.setName('show-log').setDescription('Set `true` to show detail logs').setRequired(false)
+            )
+            .addStringOption(option =>
+                option.setName('nogen').setDescription('Set `true` to update without dataset').setRequired(false)
+            ),
+
+        new SlashCommandBuilder().setName('appendtd').setDescription('Append dataset to a task')
+            .addStringOption(option =>
+                option.setName('task-name').setDescription('Task name').setRequired(true)
+            )
+            .addStringOption(option =>
+                option.setName('dataset-name').setDescription('Dataset name').setRequired(true)
+            )
+            .addStringOption(option =>
+                option.setName('show-log').setDescription('Set `true` to show detail logs').setRequired(false)
+            ),
+
+        new SlashCommandBuilder().setName('setcontest').setDescription('Set contest_id to specific contest')
+            .addIntegerOption(option =>
+                option.setName('contest-id').setDescription('Contest ID').setRequired(true)
+            ),
+
+        new SlashCommandBuilder().setName('unsetcontest').setDescription('Unset contest_id')
+    ];
+
+    try {
+        console.log('Started refreshing application (/) commands.');
+
+        rest.put(Routes.applicationCommands(CLIENT_ID), { body: commands });
+
+        console.log('Successfully reloaded application (/) commands.\n\n');
+    } catch (error) {
+        console.error(error);
+    }
 });
 
 var nowon = '';
 
-client.on('message', async msg => {
-    if (!msg.content.startsWith('!'))
+client.on('interactionCreate', async interaction => {
+    if (!interaction.isChatInputCommand()) {
         return;
-    console.log(msg.content);
-    let args = msg.content.substring(1).split(' ');
-    let cmd = args[0];
-    let res;
-    switch(cmd){
-        case 'help':
-            if(args.length < 2)
-                await msg.channel.send(`\`\`\`\n${commands.join('\n')}\`\`\``);
-            else
-                switch(args[1]){
-                    case 'update':
-                    case 'update-with-log':
-                        await cmsImportTask_usage().then(async stdout => {
-                            await msg.channel.send(`\`\`\`${stdout.replace('./updateTask.sh', `!${args[1]}`)}\`\`\``);
-                        }, async error => {
-                            await send_msg(msg, [`Some error was occured.\nError log:\`\`\`${error}\`\`\``],
-                                `Some error was occured, but error log is too large to send.`);
-                        });
-                        break;
-                    case 'appendtd':
-                    case 'appendtd-with-log':
-                        await msg.channel.send(`\`\`\`!${args[1]} <task-name> <dataset-name>: Append dataset to a task\`\`\``);
-                        break;
-                    case 'setcontest':
-                        await msg.channel.send('```!setcontest <contest-id>: Set contest_id to specific contest```');
-                        break;
-                    case 'unsetcontest':
-                        await msg.channel.send('```!unsetcontest: Unset contest_id```');
-                        break;
-                    default:
-                        await msg.channel.send('Command not found.');
+    }
+
+    const { commandName, options } = interaction;
+
+    console.log(`Command: ${commandName}\nOptions: ${JSON.stringify(options)}`);
+
+    if (commandName === 'update') {
+        const taskName = options.getString('task-name');
+        const showLog = options.getString('show-log') === 'true';
+        const nogen = options.getString('nogen') === 'true';
+
+        if (nowon !== '') {
+            await interaction.reply(`Processing "${nowon}" now, please try again later.`);
+            return;
+        }
+
+        if (taskName === null || !/^[A-Za-z0-9_]+$/.test(taskName)) {
+            await interaction.reply('`<task-name>` does not match `[A-Za-z0-9_]+`');
+            return;
+        }
+
+        nowon = taskName;
+        await interaction.reply(`Updating task "${taskName}"...`);
+
+        await updateTask(taskName, showLog, nogen, false).then(async stdout => {
+            if (showLog) {
+                const infoLog = new AttachmentBuilder(`${BOT_DIR}log.txt`);
+                await Reply(interaction, { content: `Task "${taskName}" was successfully updated.\nInfo log:`, files: [infoLog] },
+                    `Task "${taskName}" was successfully updated, but info log is too large to send.`);
+            } else {
+                await interaction.editReply(`Task "${taskName}" was successfully updated.`);
+            }
+        }, async error => {
+            if (error.length > 2000) {
+                try {
+                    fs.writeFileSync(`${BOT_DIR}/error.txt`, error);
+                } catch (e) {
+                    console.error(e);
                 }
-            break;
-        case 'update':
-        case 'update-with-log':
-            if(args.length < 2){
-                await cmsImportTask_usage().then(async stdout => {
-                    await msg.channel.send(`\`\`\`${stdout.replace('./updateTask.sh', `!${cmd}`)}\`\`\``);
-                }, async error => {
-                    await send_msg(msg, [`Some error was occured.\nError log:\`\`\`${error}\`\`\``],
-                        `Some error was occured, but error log is too large to send.`);
-                });
-                break;
+                const errorLog = new AttachmentBuilder(`${BOT_DIR}error.txt`);
+                await Reply(interaction, { content: `Task "${taskName}" was not updated.\nError log:`, files: [errorLog] },
+                    `Task "${taskName}" was not updated, but error log is too large to send.`);
+            } else {
+                await interaction.editReply(`Task "${taskName}" was not updated.\nError log:\`\`\`${error}\`\`\``);
             }
-            if(nowon !== ''){
-                await msg.channel.send(`Processing "${nowon}" now, please try again later.`);
-                break;
+
+        }).finally(() => {
+            nowon = '';
+        });
+
+    } else if (commandName === 'appendtd') {
+        const taskName = options.getString('task-name');
+        const datasetName = options.getString('dataset-name');
+        const showLog = options.getString('show-log') === 'true';
+
+        if (nowon !== '') {
+            await interaction.reply(`Processing "${nowon}" now, please try again later.`);
+            return;
+        }
+
+        if (taskName === null || !/^[A-Za-z0-9_]+$/.test(taskName)) {
+            await interaction.reply('`<task-name>` does not match `[A-Za-z0-9_]+`');
+            return;
+        }
+
+        if (datasetName === null || !/^[A-Za-z0-9_\-]+$/.test(datasetName)) {
+            await interaction.reply('`<dataset-name>` does not match `[A-Za-z0-9_\\-]+`');
+            return;
+        }
+
+        nowon = taskName;
+        await interaction.reply(`Appending dataset to task "${taskName}"...`);
+
+        await updateTask(taskName, showLog, false, true).then(async stdout => {
+            if (showLog) {
+                const infoLog = new AttachmentBuilder(`${BOT_DIR}log.txt`);
+                await Reply(interaction, { content: `Dataset was successfully appended to task "${taskName}".\nInfo log:`, files: [infoLog] },
+                    `Dataset was successfully appended to task "${taskName}", but info log is too large to send.`);
+            } else {
+                await interaction.editReply(`Dataset was successfully appended to task "${taskName}".`);
             }
-            if(!/^[A-Za-z0-9_]+$/.test(args[1])){
-                await msg.channel.send(`\`<task-name>\` does not match \`[A-Za-z0-9_]+\``);
-                break;
-            }
-            nowon = args[1];
-            await msg.channel.send(`Updating task "${args[1]}"...`);
-            await update_task(cmd, args.slice(1)).then(async stdout => {
-                if(cmd === 'update-with-log')
-                    await send_msg(msg, [`Task "${args[1]}" was successfully updated.\nInfo log:`, { files: [`${bot_dir}/log.txt`] }],
-                        `Task "${args[1]}" was successfully updated, but info log is too large to send.`);
-                else
-                    await msg.channel.send(`Task "${args[1]}" was successfully updated.`);
-            }, async error => {
-                if(error.length > 2000){
-                    try{
-                        fs.writeFileSync(`${bot_dir}/error.txt`, error);
-                    }
-                    catch(e){
-                        console.error(e);
-                    }
-                    await send_msg(msg, [`Task "${args[1]}" was not updated.\nError log:`, { files: [`${bot_dir}/error.txt`] }],
-                        `Task "${args[1]}" was not updated, but error log is too large to send.`);
+        }, async error => {
+            if (error.length > 2000) {
+                try {
+                    fs.writeFileSync(`${BOT_DIR}/error.txt`, error);
+                } catch (e) {
+                    console.error(e);
                 }
-                else
-                    await send_msg(msg, [`Task "${args[1]}" was not updated.\nError log:\`\`\`${error}\`\`\``],
-                        `Task "${args[1]}" was not updated, but error log is too large to send.`);
-            }).finally(() => {
-                nowon = '';
-            });
-            break;
-        case 'appendtd':
-        case 'appendtd-with-log':
-            if(args.length != 3){
-                await msg.channel.send(`\`\`\`!${cmd} <task-name> <dataset-name>: Append dataset to a task\`\`\``);
-                break;
+                const errorLog = new AttachmentBuilder(`${BOT_DIR}error.txt`);
+                await Reply(interaction, { content: `Dataset was not appended to task "${taskName}".\nError log:`, files: [errorLog] },
+                    `Dataset was not appended to task "${taskName}", but error log is too large to send.`);
+            } else {
+                await interaction.editReply(interaction, `Dataset was not appended to task "${taskName}".\nError log:\`\`\`${error}\`\`\``);
             }
-            if(nowon !== ''){
-                await msg.channel.send(`Processing "${nowon}" now, please try again later.`);
-                break;
-            }
-            if(!/^[A-Za-z0-9_]+$/.test(args[1])){
-                await msg.channel.send(`\`<task-name>\` does not match \`[A-Za-z0-9_]+\``);
-                break;
-            }
-            if(!/^[A-Za-z0-9_\-]+$/.test(args[2])){
-                await msg.channel.send(`\`<dataset-name>\` does not match \`[A-Za-z0-9_\\-]+\``);
-                break;
-            }
-            args.push(args[2]);
-            args[2] = '--appendtd';
-            nowon = args[1];
-            await msg.channel.send(`Appending dataset to task "${args[1]}"...`);
-            await update_task(cmd, args.slice(1)).then(async stdout => {
-                if(cmd === 'appendtd-with-log')
-                    await send_msg(msg, [`Dataset was successfully appended to task "${args[1]}".\nInfo log:`, { files: [`${bot_dir}/log.txt`] }],
-                        `Dataset was successfully appended to task "${args[1]}", but info log is too large to send.`);
-                else
-                    await msg.channel.send(`Dataset was successfully appended to task "${args[1]}".`);
-            }, async error => {
-                if(error.length > 2000){
-                    try{
-                        fs.writeFileSync(`${bot_dir}/error.txt`, error);
-                    }
-                    catch(e){
-                        console.error(e);
-                    }
-                    await send_msg(msg, [`Dataset was not appended to task "${args[1]}".\nError log:`, { files: [`${bot_dir}/error.txt`] }],
-                        `Dataset was not appended to task "${args[1]}", but error log is too large to send.`);
-                }
-                else
-                    await send_msg(msg, [`Dataset was not appended to task "${args[1]}".\nError log:\`\`\`${error}\`\`\``],
-                        `Dataset was not appended to task "${args[1]}", but error log is too large to send.`);
-            }).finally(() => {
-                nowon = '';
-            });
-            break;
-        case 'setcontest':
-            if(args.length != 2){
-                await msg.channel.send('```!setcontest <contest-id>: Set contest_id to the specific contest```');
-                break;
-            }
-            if(!is_posinteger(args[1])){
-                await msg.channel.send('`<contest-id>` must be a positive integer');
-                break;
-            }
-            res = await setcontest(Number(args[1]));
-            await msg.channel.send(res);
-            break;
-        case 'unsetcontest':
-            if(args.length != 1){
-                await msg.channel.send('```!unsetcontest: Unset contest_id```');
-                break;
-            }
-            res = await setcontest(0);
-            await msg.channel.send(res);
-            break;
+
+        }).finally(() => {
+            nowon = '';
+        });
+
+    } else if (commandName === 'setcontest') {
+        const contestId = options.getInteger('contest-id');
+
+        if (contestId === null || contestId <= 0) {
+            await interaction.reply('`<contest-id>` must be a positive integer');
+            return;
+        }
+
+        const res = await setContest(contestId);
+        await interaction.reply(res);
+    } else if (commandName === 'unsetcontest') {
+        const res = await setContest(null);
+        await interaction.reply(res);
+    } else {
+        await interaction.reply('Unknown command');
     }
 });
 
-client.login(token);
+client.login(TOKEN);
 
-async function cmsImportTask_usage(){
+async function updateTask(taskName, fullLog, nogen, appendtd) {
+    args = [];
+
+    args.push(taskName);
+
+    if (fullLog == true) {
+        args.push('--full-log');
+    }
+
+    if (nogen == true) {
+        args.push('--nogen');
+    }
+
+    if (appendtd == true) {
+        args.push('--appendtd');
+    }
+
     return new Promise((resolve, reject) => {
-        child_process.execFile(update_script, ['--help'], (err, stdout, stderr) => {
-            if(err){
+        childProcess.execFile(UPDATE_SCRIPT_PATH, args, (err, stdout, stderr) => {
+            if (err) {
                 console.error(`ERROR:\n${err}\n`);
-                reject(err.toString().replace(bot_dir, ''));
+                reject(err.toString().replace(BOT_DIR, ''));
                 return;
             }
-            resolve(stdout);
-        });
-    });
-}
 
-async function update_task(cmd, task_and_options){
-    if(cmd === 'update-with-log' || cmd === 'appendtd-with-log')
-        task_and_options.push('--full-log');
-    return new Promise((resolve, reject) => {
-        child_process.execFile(update_script, task_and_options, (err, stdout, stderr) => {
-            if(err){
-                console.error(`ERROR:\n${err}\n`);
-                reject(err.toString().replace(bot_dir, ''));
-                return;
-            }
-            if(stdout){
+            if (stdout) {
                 stdout = stdout.replace('Enter a description: ', '');
                 console.log(`STDOUT:\n${stdout}\n`);
             }
-            if(stderr)
+
+            if (stderr) {
                 console.log(`STDERR:\n${stderr}\n`);
-            if(!stdout && !stderr){
+            }
+
+            if (!stdout && !stderr) {
                 reject('Error log is too large to show');
                 return;
             }
-            if(cmd === 'update-with-log' || cmd === 'appendtd-with-log')
-                try{
-                    fs.writeFileSync(`${bot_dir}/log.txt`, stdout);
-                }
-                catch(e){
+
+            if (fullLog == true) {
+                try {
+                    fs.writeFileSync(`${BOT_DIR}/log.txt`, stdout);
+                } catch (e) {
                     console.error(e);
                 }
-            if(stdout.includes('Import finished'))
-                resolve(stdout.replace(bot_dir, ''));
-            else
-                reject(stdout.replace(bot_dir, ''));
+            }
+
+            if(stdout.includes('Import finished')) {
+                resolve(stdout.replace(BOT_DIR, ''));
+            } else {
+                reject(stdout.replace(BOT_DIR, ''));
+            }
         });
     });
 }
 
-async function setcontest(id){
-    const script_path = path.join(__dirname, 'updateTask.sh');
-    if(id)
-        cmd = `sed -i 's/contest_id=[0-9]*/contest_id=${id}/g' ${script_path}`;
-    else
-        cmd = `sed -i 's/contest_id=[0-9]*/contest_id=0/g' ${script_path}`;
+async function setContest(id) {
+    if (id) {
+        cmd = `sed -i 's/contest_id=[0-9]*/contest_id=${id}/g' ${UPDATE_SCRIPT_PATH}`;
+    } else {
+        cmd = `sed -i 's/contest_id=[0-9]*/contest_id=0/g' ${UPDATE_SCRIPT_PATH}`;
+    }
+
     return new Promise((resolve, reject) => {
-        child_process.exec(cmd, (err, stdout, stderr) => {
-            if(err){
+        childProcess.exec(cmd, (err, stdout, stderr) => {
+            if (err) {
                 console.error(`ERROR:\n${err}\n`);
-                reject(err.toString().replace(bot_dir, ''));
+                reject(err.toString().replace(BOT_DIR, ''));
                 return;
             }
-            if(id)
+
+            if (id) {
                 resolve(`Successfully set contest_id to ${id}`);
-            else
+            } else {
                 resolve('Successfully unset contest_id');
+            }
         });
     });
 }
 
-function is_posinteger(x){
-    if(typeof x !== "string")
-        return false;
-    const num = Number(x);
-    return Number.isInteger(num) && num > 0;
-}
-
-async function send_msg(msg, content, error_content){
-    try{
-        if(content.length > 1)
-            await msg.channel.send(content[0], content[1]);
-        else
-            await msg.channel.send(content[0]);
-    }
-    catch(e){
+async function Reply(interaction, content, error_content){
+    try {
+        await interaction.editReply(content);
+    } catch (e) {
         console.error(e);
-        await msg.channel.send(error_content);
+        await interaction.editReply(error_content);
     }
 }
