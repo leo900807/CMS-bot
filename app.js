@@ -28,9 +28,11 @@ client.on('ready', () => {
             )
             .addStringOption(option =>
                 option.setName('show-log').setDescription('Set `true` to show detail logs').setRequired(false)
+                    .setChoices({ name: 'true', value: 'true' }, { name: 'false', value: 'false' })
             )
             .addStringOption(option =>
                 option.setName('nogen').setDescription('Set `true` to update without dataset').setRequired(false)
+                    .setChoices({ name: 'true', value: 'true' }, { name: 'false', value: 'false' })
             ),
 
         new SlashCommandBuilder().setName('appendtd').setDescription('Append dataset to a task')
@@ -42,6 +44,7 @@ client.on('ready', () => {
             )
             .addStringOption(option =>
                 option.setName('show-log').setDescription('Set `true` to show detail logs').setRequired(false)
+                    .setChoices({ name: 'true', value: 'true' }, { name: 'false', value: 'false' })
             ),
 
         new SlashCommandBuilder().setName('setcontest').setDescription('Set contest_id to specific contest')
