@@ -17,11 +17,13 @@ const client = new Client({
 
 const rest = new REST({ version: '10' }).setToken(TOKEN);
 
-client.on('ready', () => {
+var commands = [];
+
+client.on('ready', async () => {
     console.log(`Logged in as ${client.user.tag}`);
     client.user.setActivity('Use `/` to trigger commands', { type: ActivityType.Custom });
 
-    const commands = [
+    commands = [
         new SlashCommandBuilder().setName('update').setDescription('Update a task')
             .addStringOption(option => 
                 option.setName('task-name').setDescription('Task name').setRequired(true)
@@ -47,6 +49,9 @@ client.on('ready', () => {
                     .setChoices({ name: 'true', value: 'true' }, { name: 'false', value: 'false' })
             ),
 
+        new SlashCommandBuilder().setName('update-problist')
+            .setDescription('Add the problems to the selection menu of update command when you add new problems'),
+
         new SlashCommandBuilder().setName('setcontest').setDescription('Set contest_id to specific contest')
             .addIntegerOption(option =>
                 option.setName('contest-id').setDescription('Contest ID').setRequired(true)
@@ -55,15 +60,11 @@ client.on('ready', () => {
         new SlashCommandBuilder().setName('unsetcontest').setDescription('Unset contest_id')
     ];
 
-    try {
-        console.log('Started refreshing application (/) commands.');
+    await updateProbList().then(async probList => {
+        commands[0].options[0].choices = probList.map(prob => { return { name: prob, value: prob } });
+    });
 
-        rest.put(Routes.applicationCommands(CLIENT_ID), { body: commands });
-
-        console.log('Successfully reloaded application (/) commands.\n\n');
-    } catch (error) {
-        console.error(error);
-    }
+    await updateCommands();
 });
 
 var nowon = '';
@@ -170,6 +171,18 @@ client.on('interactionCreate', async interaction => {
             nowon = '';
         });
 
+    } else if (commandName === 'update-problist') {
+        await interaction.reply('Updating problem list...');
+
+        await updateProbList().then(async probList => {
+            commands[0].options[0].choices = probList.map(prob => { return { name: prob, value: prob } });
+            await updateCommands();
+
+            await interaction.editReply('Problem list was successfully updated\nPlease refresh the web or restart the app to see the changes');
+        }, async error => {
+            await interaction.editReply('Problem list was not updated, please contact admin');
+        });
+
     } else if (commandName === 'setcontest') {
         const contestId = options.getInteger('contest-id');
 
@@ -180,15 +193,29 @@ client.on('interactionCreate', async interaction => {
 
         const res = await setContest(contestId);
         await interaction.reply(res);
+
     } else if (commandName === 'unsetcontest') {
         const res = await setContest(null);
         await interaction.reply(res);
+
     } else {
         await interaction.reply('Unknown command');
     }
 });
 
 client.login(TOKEN);
+
+async function updateCommands() {
+    try {
+        console.log('Started refreshing application (/) commands.');
+
+        await rest.put(Routes.applicationCommands(CLIENT_ID), { body: commands });
+
+        console.log('Successfully reloaded application (/) commands.\n\n');
+    } catch (error) {
+        console.error(error);
+    }
+}
 
 async function updateTask(taskName, fullLog, nogen, appendtd) {
     args = [];
@@ -242,6 +269,33 @@ async function updateTask(taskName, fullLog, nogen, appendtd) {
             } else {
                 reject(stdout.replace(BOT_DIR, ''));
             }
+        });
+    });
+}
+
+async function updateProbList() {
+    return new Promise((resolve, reject) => {
+        childProcess.execFile(UPDATE_SCRIPT_PATH, ['--list-prob'], (err, stdout, stderr) => {
+            if (err) {
+                console.error(`ERROR:\n${err}\n`);
+                reject(err.toString().replace(BOT_DIR, ''));
+                return;
+            }
+
+            if (stdout) {
+                console.log(`STDOUT:\n${stdout}\n`);
+            }
+
+            if (stderr) {
+                console.log(`STDERR:\n${stderr}\n`);
+            }
+
+            if (!stdout && !stderr) {
+                reject('Error log is too large to show');
+                return;
+            }
+
+            resolve(stdout.split('\n').filter(prob => prob !== ''));
         });
     });
 }

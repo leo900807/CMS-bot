@@ -7,15 +7,35 @@ contest_id=0
 task_path="${root_dir}/${repo_dir}/${task}"
 nogen=0
 
+is_problem () {
+    name=$1
+
+    case ${name} in
+        "Hello_CMS" | "Template") # Sample problems
+            return 1
+            ;;
+        "scripts" | "statementbox" | "tps_scripts") # Non-problem directories
+            return 1
+            ;;
+        *)
+            return 0
+            ;;
+    esac
+}
+
 help_func () {
     echo "Usage: ./updateTask.sh <task-name> [options]"
     echo "Update a tps-format task for the CMS server from a Gitlab/GitHub repo."
+    echo ""
+    echo -e "  --full-log\t\t\tPrint full log of git pull and tps gen"
     echo ""
     echo -e "  --nogen\t\t\tDo not generate testcases while updating. Note that the testcases should have been generated already."
     echo ""
     echo -e "  --appendtd <dataset-name>\tAppend dataset to a task"
     echo ""
     echo -e "  --help\t\t\tPrint help messages"
+    echo ""
+    echo -e "  --list-prob\t\t\tList all problems in the repo"
     exit 0
 }
 
@@ -25,6 +45,22 @@ fi
 
 if [[ ${task} == "--help" ]]; then
     help_func
+fi
+
+if [[ ${task} == "--list-prob" ]]; then
+    dir=`ls -F ${root_dir}/${repo_dir} | grep '/$' | sed 's/\/$//'`
+
+    if [[ -z ${dir} ]]; then
+        >&2 echo "No problems found"
+        exit 0
+    fi
+
+    for d in ${dir}; do
+        if is_problem ${d}; then
+            echo ${d}
+        fi
+    done
+    exit 0
 fi
 
 shift 1
