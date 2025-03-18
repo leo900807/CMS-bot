@@ -89,7 +89,7 @@ client.on('interactionCreate', async interaction => {
         }
 
         if (taskName === null || !/^[A-Za-z0-9_]+$/.test(taskName)) {
-            await interaction.reply('`<task-name>` does not match `[A-Za-z0-9_]+`');
+            await interaction.reply('`<task-name>` does not match `[A-Za-z0-9_]+`.');
             return;
         }
 
@@ -133,12 +133,12 @@ client.on('interactionCreate', async interaction => {
         }
 
         if (taskName === null || !/^[A-Za-z0-9_]+$/.test(taskName)) {
-            await interaction.reply('`<task-name>` does not match `[A-Za-z0-9_]+`');
+            await interaction.reply('`<task-name>` does not match `[A-Za-z0-9_]+`.');
             return;
         }
 
         if (datasetName === null || !/^[A-Za-z0-9_\-]+$/.test(datasetName)) {
-            await interaction.reply('`<dataset-name>` does not match `[A-Za-z0-9_\\-]+`');
+            await interaction.reply('`<dataset-name>` does not match `[A-Za-z0-9_\\-]+`.');
             return;
         }
 
@@ -178,16 +178,16 @@ client.on('interactionCreate', async interaction => {
             commands[0].options[0].choices = probList.map(prob => { return { name: prob, value: prob } });
             await updateCommands();
 
-            await interaction.editReply('Problem list was successfully updated\nPlease refresh the web or restart the app to see the changes');
+            await interaction.editReply('Problem list was successfully updated\nPlease refresh the web or restart the app to see the changes.');
         }, async error => {
-            await interaction.editReply('Problem list was not updated, please contact admin');
+            await interaction.editReply('Problem list was not updated, please contact admin.');
         });
 
     } else if (commandName === 'setcontest') {
         const contestId = options.getInteger('contest-id');
 
         if (contestId === null || contestId <= 0) {
-            await interaction.reply('`<contest-id>` must be a positive integer');
+            await interaction.reply('`<contest-id>` must be a positive integer.');
             return;
         }
 
@@ -199,7 +199,7 @@ client.on('interactionCreate', async interaction => {
         await interaction.reply(res);
 
     } else {
-        await interaction.reply('Unknown command');
+        await interaction.reply('Unknown command.');
     }
 });
 
